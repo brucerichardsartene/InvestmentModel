@@ -10,7 +10,7 @@
             var simulator = new PortfolioSimulator();
             simulator.RunSimulation(
                 numSimulations: 20000,
-                years: 30,
+                years: 40,
                 initialInvestment: 1800000
             );
 
@@ -52,8 +52,8 @@
         private readonly double yourFees = 0.0015;  // 0.2%
         private readonly double alFees = 0.013;    // 1.3%
 
-        int annualWithdrawalStart = 3;
-        double annualWithdrawal = 140000;   // starting draw
+        int annualWithdrawalStart = 5;
+        double annualWithdrawal = 135000;   // starting draw
         bool inflationLinked = true;
         double inflationRate = 0.028;       // 2% inflation
 
@@ -119,8 +119,22 @@
             for (int year = 0; year < years; year++)
             {
 
-                // reduce take-out with age
-                annualWithdrawal = (year == 11 || year == 16 || year == 21) ? (annualWithdrawal * 0.9) : annualWithdrawal;
+                // Calculate base withdrawal with age-based reductions
+                double currentWithdrawal = annualWithdrawal;
+                if (year >= 21)
+                    currentWithdrawal *= 0.729; // 0.9^3
+                else if (year >= 16)
+                    currentWithdrawal *= 0.81;  // 0.9^2
+                else if (year >= 11)
+                    currentWithdrawal *= 0.9;   // 0.9^1
+
+
+                // Year 21: house downsize adds £600,000
+                if (year == 21)
+                {
+                    portfolioValue += 1700000;
+                }
+
                 // Generate correlated asset returns
                 var assetReturns = GenerateCorrelatedReturns(choleskyMatrix);
 
@@ -140,7 +154,7 @@
                 portfolioValue *= (1 + portfolioReturn);
 
                 // Withdraw cash
-                double withdrawal = annualWithdrawal;
+                double withdrawal = currentWithdrawal;
                 if (inflationLinked)
                 {
                     withdrawal *= Math.Pow(1 + inflationRate, year);
@@ -308,6 +322,10 @@
                                            .ToList();
                 Console.WriteLine($"  Median year of depletion (if depleted): Year {GetPercentile(depletedYears, 0.5):F0}");
             }
+
+            int preDownsizeFails = results.Count(r => r.YearsSurvived < 21);
+            double preDownsizeRuin = (double)preDownsizeFails / results.Count;
+            Console.WriteLine($"Probability of ruin before house downsize (Year 21): {preDownsizeRuin:P2}");
 
             Console.WriteLine($"\nAnnualized Return:");
             Console.WriteLine($"  Median:        {GetPercentile(annualizedReturns, 0.5):P2}");
