@@ -181,7 +181,6 @@
                 pension *= (1 + portfolioReturn);
                 portfolioValue = taxable + isa + pension;
 
-                // Skim excess gains when 15% above previous peak
 
                 // Skim excess gains when 15% above previous peak
                 if (portfolioValue > prevPeak * 1.15)
@@ -193,7 +192,7 @@
                     isa -= isa * skimRatio;
                     pension -= pension * skimRatio;
 
-                    portfolioValue -= skim;
+                    portfolioValue = taxable + isa + pension;
                     cashBuffer += skim;
                     prevPeak = portfolioValue;
                 }
