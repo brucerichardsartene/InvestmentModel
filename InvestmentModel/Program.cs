@@ -30,6 +30,7 @@
         private readonly double bondStdDev = 0.06;
         private readonly double propertyMean = 0.05;
         private readonly double propertyStdDev = 0.12;
+        private readonly double cgtRebalancingDrag = 0.005; // 0.5% annual drag from realised gains
 
         // Correlation matrix
         // Equity-Bond: -0.2 (slight negative, flight to safety)
@@ -156,6 +157,15 @@
 
                 // Apply fees
                 portfolioReturn -= fees;
+
+                // Apply CGT/rebalancing drag to taxable wrapper only (in positive return years)
+                if (portfolioReturn > 0)
+                {
+                    double taxableWeight = taxable / portfolioValue;
+                    double cgtDrag = cgtRebalancingDrag * taxableWeight;
+                    portfolioReturn -= cgtDrag;
+                }
+
                 yearlyReturns.Add(portfolioReturn);
 
                 // Update portfolio value after returns
@@ -197,6 +207,12 @@
                         effectiveWithdrawal *= 0.9; // 10% cut in down years
                         cutYears++;
                     }
+
+                    // Mortgage
+                    effectiveWithdrawal += (year >= 5 && year <= 22) ? 60000 : 0;
+
+
+
 
                     double netNeed = effectiveWithdrawal;   // what you actually spend
                     double grossWithdrawal = 0;
