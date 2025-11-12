@@ -53,7 +53,7 @@
         private readonly double alFees = 0.013;    // 1.3%
 
         int annualWithdrawalStart = 3;
-        double annualWithdrawal = 110000;   // starting draw
+        double annualWithdrawal = 100000;   // starting draw
         bool inflationLinked = true;
         double inflationRate = 0.028;       // 2% inflation
 
@@ -148,7 +148,7 @@
                 {
                     if (portfolioReturn < -0.00)
                     {
-                        portfolioValue -= (withdrawal * 0.9);
+                        portfolioValue -= (withdrawal * 0.8);
                     }
                     else
                     {
@@ -300,7 +300,7 @@
             if (depleted > 0)
             {
                 var depletedYears = results.Where(r => r.YearsSurvived < targetYears)
-                                           .Select(r => r.YearsSurvived)
+                                           .Select(r => (double)r.YearsSurvived)
                                            .OrderBy(y => y)
                                            .ToList();
                 Console.WriteLine($"  Median year of depletion (if depleted): Year {GetPercentile(depletedYears, 0.5):F0}");
@@ -371,6 +371,6 @@
         public int YearsInDrawdown { get; set; }
         public double SharpeRatio { get; set; }
         public double AnnualizedReturn { get; set; }
-        public double YearsSurvived { get; set; }
+        public int YearsSurvived { get; set; }
     }
 }
