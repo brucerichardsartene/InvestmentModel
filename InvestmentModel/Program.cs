@@ -203,8 +203,15 @@
                 if (portfolioReturn > 0.08 && permanentCash < targetPermanentCash)
                 {
                     double topUp = Math.Min(targetPermanentCash - permanentCash,
-                                            portfolioValue * 0.02); // max 2% of portfolio per year
-                    portfolioValue -= topUp;
+                                            portfolioValue * 0.02);
+                    double topUpRatio = topUp / portfolioValue;
+
+                    // Reduce each wrapper proportionally
+                    taxable -= taxable * topUpRatio;
+                    isa -= isa * topUpRatio;
+                    pension -= pension * topUpRatio;
+
+                    portfolioValue = taxable + isa + pension;  // recompute
                     permanentCash += topUp;
                 }
 
@@ -291,7 +298,20 @@
                         double fromCash = totalAvailableCash;
                         permanentCash = 0;
                         cashBuffer = 0;
-                        portfolioValue -= (grossWithdrawal - fromCash);
+
+                        double fromPortfolio = grossWithdrawal - fromCash;
+
+                        if (portfolioValue > 0)
+                        {
+                            double withdrawRatio = Math.Min(fromPortfolio / portfolioValue, 1.0);
+
+                            // Reduce each wrapper proportionally
+                            taxable -= taxable * withdrawRatio;
+                            isa -= isa * withdrawRatio;
+                            pension -= pension * withdrawRatio;
+
+                            portfolioValue = taxable + isa + pension;  // recompute
+                        }
                     }
 
                     // Check if portfolio is depleted
