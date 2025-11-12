@@ -10,7 +10,7 @@
             var simulator = new PortfolioSimulator();
             simulator.RunSimulation(
                 numSimulations: 20000,
-                years: 25,
+                years: 30,
                 initialInvestment: 1800000
             );
 
@@ -49,11 +49,11 @@
         private readonly double[] yourPortfolio = { 1.0, 0.0, 0.0 };  // 100% equity
         private readonly double[] alPortfolio = { 0.78, 0.146, 0.064 }; // equities, bonds, alternatives
 
-        private readonly double yourFees = 0.002;  // 0.2%
+        private readonly double yourFees = 0.0015;  // 0.2%
         private readonly double alFees = 0.013;    // 1.3%
 
         int annualWithdrawalStart = 3;
-        double annualWithdrawal = 100000;   // starting draw
+        double annualWithdrawal = 140000;   // starting draw
         bool inflationLinked = true;
         double inflationRate = 0.028;       // 2% inflation
 
@@ -118,6 +118,9 @@
 
             for (int year = 0; year < years; year++)
             {
+
+                // reduce take-out with age
+                annualWithdrawal = (year == 11 || year == 16 || year == 21) ? (annualWithdrawal * 0.9) : annualWithdrawal;
                 // Generate correlated asset returns
                 var assetReturns = GenerateCorrelatedReturns(choleskyMatrix);
 
