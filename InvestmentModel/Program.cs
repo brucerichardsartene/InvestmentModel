@@ -105,8 +105,7 @@
             double[,] choleskyMatrix)
         {
             // Initialize cash buffers and portfolio
-            double permanentCash = initialValue * 0.05;      // 5% permanent reserve
-            double portfolioValue = initialValue * 0.95;     // invested remainder
+
             double cashBuffer = 0;                           // dynamic skim buffer
 
             double maxValue = initialValue;
@@ -115,14 +114,20 @@
             int currentDrawdownYears = 0;
             double peakValue = initialValue;
             int cutYears = 0;
+
+            double permanentCash = initialValue * 0.05;
+            double investableAmount = initialValue * 0.95;
+            double taxable = investableAmount * 0.84;
+            double isa = investableAmount * 0.05;
+            double pension = investableAmount * 0.11;
+            double portfolioValue = taxable + isa + pension;
+
+            portfolioValue = taxable + isa + pension; // still use as total for returns
             double prevPeak = portfolioValue;
 
             double taxRateTaxable = 0.24, taxRateISA = 0.0, taxRatePension = 0.30;
             double totalTaxPaid = 0;
 
-            double taxable = initialValue * 0.84;
-            double isa = initialValue * 0.05;
-            double pension = initialValue * 0.11;
             portfolioValue = taxable + isa + pension; // still use as total for returns
 
             var yearlyReturns = new List<double>();
@@ -141,8 +146,9 @@
                 // Year 21: house downsize adds £1,700,000
                 if (year == 21)
                 {
+                    taxable += 1700000;
                     portfolioValue += 1700000;
-                    prevPeak = portfolioValue; // reset peak after major inflow
+                    prevPeak = portfolioValue;
                 }
 
                 // Generate correlated asset returns
@@ -161,23 +167,35 @@
                 // Apply CGT/rebalancing drag to taxable wrapper only (in positive return years)
                 if (portfolioReturn > 0)
                 {
-                    double taxableWeight = taxable / portfolioValue;
+                    double totalWrappers = taxable + isa + pension;
+                    double taxableWeight = (totalWrappers > 0) ? taxable / totalWrappers : 0;
                     double cgtDrag = cgtRebalancingDrag * taxableWeight;
                     portfolioReturn -= cgtDrag;
                 }
 
                 yearlyReturns.Add(portfolioReturn);
 
-                // Update portfolio value after returns
-                portfolioValue *= (1 + portfolioReturn);
+                // Update portfolio value after returns - apply to each wrapper
+                taxable *= (1 + portfolioReturn);
+                isa *= (1 + portfolioReturn);
+                pension *= (1 + portfolioReturn);
+                portfolioValue = taxable + isa + pension;
+
+                // Skim excess gains when 15% above previous peak
 
                 // Skim excess gains when 15% above previous peak
                 if (portfolioValue > prevPeak * 1.15)
                 {
                     double skim = portfolioValue - prevPeak * 1.10;
+                    double skimRatio = skim / portfolioValue;
+
+                    taxable -= taxable * skimRatio;
+                    isa -= isa * skimRatio;
+                    pension -= pension * skimRatio;
+
                     portfolioValue -= skim;
                     cashBuffer += skim;
-                    prevPeak = portfolioValue; // reset threshold
+                    prevPeak = portfolioValue;
                 }
 
                 // Rebuild permanent cash buffer in strong recovery years
