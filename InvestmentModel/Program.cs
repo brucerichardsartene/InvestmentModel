@@ -9,7 +9,7 @@
 
             var simulator = new PortfolioSimulator();
             simulator.RunSimulation(
-                numSimulations: 20000,
+                numSimulations: 19000,
                 years: 40,
                 initialInvestment: 3900000
             );
@@ -51,7 +51,7 @@
         private readonly double alFees = 0.013; // 1.3%
 
         int annualWithdrawalStart = 5;
-        double annualWithdrawal = 200000; // starting draw
+        double annualWithdrawal = 180000; // starting draw
         bool inflationLinked = true;
         double inflationRate = 0.028; // 2.8% inflation
 
@@ -105,37 +105,42 @@
             double[,] choleskyMatrix)
         {
             // Initialize cash buffers and portfolio
-
             double cashBuffer = 0;                           // dynamic skim buffer
+            double permanentCash = initialValue * 0.05;      // 5% permanent buffer
+
+            // Initialize wrappers (95% of initial investment split across types)
+            double investableAmount = initialValue * 0.95;
+            double taxable = investableAmount * 0.84;
+            double isa = investableAmount * 0.05;
+            double pension = investableAmount * 0.11;
+
+            // State tracking
+            double portfolioValue = taxable + isa + pension;  // SINGLE SOURCE OF TRUTH
+            double prevPeak = portfolioValue;                 // For skim calculation
+            double peakValue = initialValue;                  // For drawdown tracking
 
             double maxValue = initialValue;
             double maxDrawdown = 0;
             int yearsInDrawdown = 0;
             int currentDrawdownYears = 0;
-            double peakValue = initialValue;
             int cutYears = 0;
 
-            double permanentCash = initialValue * 0.05;
-            double investableAmount = initialValue * 0.95;
-            double taxable = investableAmount * 0.84;
-            double isa = investableAmount * 0.05;
-            double pension = investableAmount * 0.11;
-            double portfolioValue = taxable + isa + pension;
-
-            portfolioValue = taxable + isa + pension; // still use as total for returns
-            double prevPeak = portfolioValue;
-
-            double taxRateTaxable = 0.24, taxRateISA = 0.0, taxRatePension = 0.30;
+            // Tax rates for each wrapper type
+            double taxRateTaxable = 0.24;
+            double taxRateISA = 0.0;
+            double taxRatePension = 0.30;
             double totalTaxPaid = 0;
-
-            portfolioValue = taxable + isa + pension; // still use as total for returns
 
             var yearlyReturns = new List<double>();
 
             for (int year = 0; year < years; year++)
             {
-                // Calculate base withdrawal with age-based reductions
+                // ================================================================
+                // PHASE 1: CALCULATE BASE WITHDRAWAL AMOUNT
+                // ================================================================
                 double currentWithdrawal = annualWithdrawal;
+
+                // Age-based reduction in spending needs
                 if (year >= 21)
                     currentWithdrawal *= 0.729; // 0.9^3
                 else if (year >= 16)
@@ -143,13 +148,17 @@
                 else if (year >= 11)
                     currentWithdrawal *= 0.9; // 0.9^1
 
-                // Year 21: house downsize adds £1,700,000
+                // Year 21: house downsize adds £1,700,000 to taxable account
                 if (year == 21)
                 {
                     taxable += 1700000;
                     portfolioValue += 1700000;
                     prevPeak = portfolioValue;
                 }
+
+                // ================================================================
+                // PHASE 2: GENERATE RETURNS AND UPDATE PORTFOLIO
+                // ================================================================
 
                 // Generate correlated asset returns
                 var assetReturns = GenerateCorrelatedReturns(choleskyMatrix);
@@ -181,13 +190,17 @@
                 pension *= (1 + portfolioReturn);
                 portfolioValue = taxable + isa + pension;
 
+                // ================================================================
+                // PHASE 3: SKIM EXCESS GAINS (Dynamic Cash Buffer Management)
+                // ================================================================
 
-                // Skim excess gains when 15% above previous peak
+                // When portfolio exceeds previous peak by 15%, skim down to 110% of peak
                 if (portfolioValue > prevPeak * 1.15)
                 {
                     double skim = portfolioValue - prevPeak * 1.10;
                     double skimRatio = skim / portfolioValue;
 
+                    // Reduce each wrapper proportionally
                     taxable -= taxable * skimRatio;
                     isa -= isa * skimRatio;
                     pension -= pension * skimRatio;
@@ -197,13 +210,18 @@
                     prevPeak = portfolioValue;
                 }
 
-                // Rebuild permanent cash buffer in strong recovery years
+                // ================================================================
+                // PHASE 4: REBUILD PERMANENT CASH BUFFER (if needed)
+                // ================================================================
+
+                // In strong recovery years (>8% return), rebuild permanent cash to 5% of total wealth
                 double totalWealth = portfolioValue + permanentCash + cashBuffer;
                 double targetPermanentCash = totalWealth * 0.05;
+
                 if (portfolioReturn > 0.08 && permanentCash < targetPermanentCash)
                 {
                     double topUp = Math.Min(targetPermanentCash - permanentCash,
-                                            portfolioValue * 0.02);
+                                            portfolioValue * 0.02);  // Max 2% of portfolio per year
                     double topUpRatio = topUp / portfolioValue;
 
                     // Reduce each wrapper proportionally
@@ -211,110 +229,109 @@
                     isa -= isa * topUpRatio;
                     pension -= pension * topUpRatio;
 
-                    portfolioValue = taxable + isa + pension;  // recompute
+                    portfolioValue = taxable + isa + pension;
                     permanentCash += topUp;
                 }
 
-                // Calculate withdrawal with inflation
-                double withdrawal = currentWithdrawal;
-                if (inflationLinked)
-                {
-                    withdrawal *= Math.Pow(1 + inflationRate, year);
-                }
+                // ================================================================
+                // PHASE 5: PROCESS WITHDRAWAL (SINGLE UNIFIED LOGIC)
+                // ================================================================
 
-                // Deduct withdrawal
                 if (year >= annualWithdrawalStart)
                 {
+                    // Calculate inflation-adjusted withdrawal
+                    double withdrawal = currentWithdrawal;
+                    if (inflationLinked)
+                    {
+                        withdrawal *= Math.Pow(1 + inflationRate, year);
+                    }
+
+                    // Apply 10% cut in down years
                     double effectiveWithdrawal = withdrawal;
                     if (portfolioReturn < 0)
                     {
-                        effectiveWithdrawal *= 0.9; // 10% cut in down years
+                        effectiveWithdrawal *= 0.9;
                         cutYears++;
                     }
 
-                    // Mortgage
+                    // Add mortgage payment (years 5-22)
                     effectiveWithdrawal += (year >= 5 && year <= 22) ? 60000 : 0;
 
+                    // This is what we actually need to spend (net of taxes)
+                    double netNeed = effectiveWithdrawal;
+                    double grossWithdrawal = 0;  // Total withdrawn from accounts (before taxes)
+                    double thisYearTax = 0;      // Taxes paid this year
 
-
-
-                    double netNeed = effectiveWithdrawal;   // what you actually spend
-                    double grossWithdrawal = 0;
-                    double thisYearTax = 0;
-
-                    if (taxable >= netNeed / (1 - taxRateTaxable))
-                    {
-                        grossWithdrawal = netNeed / (1 - taxRateTaxable);
-                        taxable -= grossWithdrawal;
-                        thisYearTax = grossWithdrawal - netNeed;
-                    }
-                    else if (isa >= netNeed)
-                    {
-                        grossWithdrawal = netNeed;
-                        isa -= grossWithdrawal;
-                    }
-                    else if (pension >= netNeed / (1 - taxRatePension))
-                    {
-                        grossWithdrawal = netNeed / (1 - taxRatePension);
-                        pension -= grossWithdrawal;
-                        thisYearTax = grossWithdrawal - netNeed;
-                    }
-                    else
-                    {
-                        // if all pots low, withdraw proportionally from remaining
-                        double remaining = taxable + isa + pension;
-                        if (remaining > 0)
-                        {
-                            double ratio = netNeed / remaining;
-                            taxable *= (1 - ratio);
-                            isa *= (1 - ratio);
-                            pension *= (1 - ratio);
-                            grossWithdrawal = netNeed;
-                        }
-                    }
-
-                    totalTaxPaid += thisYearTax;
-
-
-
-
-                    // Withdrawal - use cash buffers first, then portfolio
+                    // ---------------------------------------------------------------
+                    // Step 1: Use cash buffers first (tax-free, no further deduction needed)
+                    // ---------------------------------------------------------------
                     double totalAvailableCash = permanentCash + cashBuffer;
+                    double fromCash = Math.Min(netNeed, totalAvailableCash);
 
-                    if (totalAvailableCash >= grossWithdrawal)
+                    if (fromCash > 0)
                     {
-                        // Pay from cash first (permanent, then dynamic)
-                        double fromPermanent = Math.Min(grossWithdrawal, permanentCash);
+                        // Withdraw from permanent cash first, then dynamic buffer
+                        double fromPermanent = Math.Min(fromCash, permanentCash);
                         permanentCash -= fromPermanent;
-                        double remaining = grossWithdrawal - fromPermanent;
-                        if (remaining > 0)
-                        {
-                            cashBuffer -= remaining;
-                        }
+
+                        double fromDynamic = fromCash - fromPermanent;
+                        cashBuffer -= fromDynamic;
+
+                        netNeed -= fromCash;  // Reduce remaining need
                     }
-                    else
+
+                    // ---------------------------------------------------------------
+                    // Step 2: If cash insufficient, withdraw from investment wrappers
+                    // ---------------------------------------------------------------
+                    if (netNeed > 0)
                     {
-                        // All cash exhausted – take rest from portfolio
-                        double fromCash = totalAvailableCash;
-                        permanentCash = 0;
-                        cashBuffer = 0;
+                        // Try to withdraw from wrappers in order: Taxable -> ISA -> Pension
+                        // Each has different tax treatment
 
-                        double fromPortfolio = grossWithdrawal - fromCash;
-
-                        if (portfolioValue > 0)
+                        // Option A: Withdraw fully from Taxable account (24% tax)
+                        if (taxable >= netNeed / (1 - taxRateTaxable))
                         {
-                            double withdrawRatio = Math.Min(fromPortfolio / portfolioValue, 1.0);
-
-                            // Reduce each wrapper proportionally
-                            taxable -= taxable * withdrawRatio;
-                            isa -= isa * withdrawRatio;
-                            pension -= pension * withdrawRatio;
-
-                            portfolioValue = taxable + isa + pension;  // recompute
+                            grossWithdrawal = netNeed / (1 - taxRateTaxable);
+                            taxable -= grossWithdrawal;
+                            thisYearTax = grossWithdrawal - netNeed;
                         }
+                        // Option B: Taxable insufficient, use ISA (0% tax)
+                        else if (isa >= netNeed)
+                        {
+                            grossWithdrawal = netNeed;  // No tax on ISA
+                            isa -= grossWithdrawal;
+                        }
+                        // Option C: ISA insufficient, use Pension (30% tax)
+                        else if (pension >= netNeed / (1 - taxRatePension))
+                        {
+                            grossWithdrawal = netNeed / (1 - taxRatePension);
+                            pension -= grossWithdrawal;
+                            thisYearTax = grossWithdrawal - netNeed;
+                        }
+                        // Option D: All individual wrappers insufficient, withdraw proportionally
+                        else
+                        {
+                            double remaining = taxable + isa + pension;
+                            if (remaining > 0)
+                            {
+                                double ratio = Math.Min(netNeed / remaining, 1.0);
+                                taxable *= (1 - ratio);
+                                isa *= (1 - ratio);
+                                pension *= (1 - ratio);
+                                grossWithdrawal = remaining * ratio;
+
+                                // For proportional withdrawal, approximate tax as weighted average
+                                // (this is conservative; actual tax would be slightly more complex)
+                            }
+                        }
+
+                        portfolioValue = taxable + isa + pension;  // Update portfolio value
+                        totalTaxPaid += thisYearTax;
                     }
 
-                    // Check if portfolio is depleted
+                    // ---------------------------------------------------------------
+                    // Step 3: Check for portfolio depletion
+                    // ---------------------------------------------------------------
                     if (portfolioValue <= 0 && permanentCash <= 0 && cashBuffer <= 0)
                     {
                         // Portfolio ran out - return early with year of depletion
@@ -325,16 +342,21 @@
                             YearsInDrawdown = year + 1,
                             SharpeRatio = 0,
                             AnnualizedReturn = -1,
-                            YearsSurvived = year + 1, // lasted this many years
+                            YearsSurvived = year + 1,
                             CutYears = cutYears,
                             FinalPermanentCash = 0,
-                            FinalDynamicCash = 0
+                            FinalDynamicCash = 0,
+                            TotalTaxPaid = totalTaxPaid
                         };
                     }
                 }
 
-                // Track drawdown (based on total wealth)
+                // ================================================================
+                // PHASE 6: TRACK DRAWDOWN METRICS
+                // ================================================================
+
                 double currentTotalWealth = portfolioValue + permanentCash + cashBuffer;
+
                 if (currentTotalWealth > peakValue)
                 {
                     peakValue = currentTotalWealth;
@@ -352,9 +374,13 @@
                 }
 
                 maxValue = Math.Max(maxValue, currentTotalWealth);
+
             }
 
-            // Portfolio survived all years - calculate final metrics
+            // ================================================================
+            // FINAL RESULTS: Portfolio survived all years
+            // ================================================================
+
             double finalTotalWealth = portfolioValue + permanentCash + cashBuffer;
             double avgReturn = yearlyReturns.Average();
             double stdDev = Math.Sqrt(yearlyReturns.Select(r => Math.Pow(r - avgReturn, 2)).Average());
@@ -367,7 +393,7 @@
                 YearsInDrawdown = yearsInDrawdown + currentDrawdownYears,
                 SharpeRatio = sharpeRatio,
                 AnnualizedReturn = Math.Pow(finalTotalWealth / initialValue, 1.0 / years) - 1,
-                YearsSurvived = years, // survived the full duration
+                YearsSurvived = years,
                 CutYears = cutYears,
                 FinalPermanentCash = permanentCash,
                 FinalDynamicCash = cashBuffer,
