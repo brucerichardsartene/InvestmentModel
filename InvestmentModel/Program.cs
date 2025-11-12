@@ -53,7 +53,7 @@
         private readonly double alFees = 0.013;    // 1.3%
 
         int annualWithdrawalStart = 5;
-        double annualWithdrawal = 135000;   // starting draw
+        double annualWithdrawal = 130000;   // starting draw
         bool inflationLinked = true;
         double inflationRate = 0.028;       // 2% inflation
 
@@ -113,6 +113,10 @@
             int yearsInDrawdown = 0;
             int currentDrawdownYears = 0;
             double peakValue = initialValue;
+            int cutYears = 0;
+
+            double prevPeak = initialValue;
+            double withdrawalSource;
 
             var yearlyReturns = new List<double>();
 
@@ -153,6 +157,15 @@
                 // Update portfolio value after returns
                 portfolioValue *= (1 + portfolioReturn);
 
+                // if we're 10% higher than last peak
+                if (portfolioValue > prevPeak * 1.10)
+                {
+                    double skim = portfolioValue - prevPeak * 1.10;
+                    portfolioValue -= skim;
+                    cashBuffer += skim;
+                    prevPeak = portfolioValue;  // reset threshold
+                }
+
                 // Withdraw cash
                 double withdrawal = currentWithdrawal;
                 if (inflationLinked)
@@ -163,13 +176,30 @@
                 // Deduct withdrawal
                 if (year >= annualWithdrawalStart)
                 {
-                    if (portfolioReturn < -0.00)
+                    double effectiveWithdrawal = withdrawal;
+                    if (portfolioReturn < 0)
                     {
-                        portfolioValue -= (withdrawal * 0.8);
+                        effectiveWithdrawal *= 0.9; // 10% cut
+                        cutYears++;
+                    }
+
+
+                    //portfolioValue -= effectiveWithdrawal;
+
+
+                    // Withdrawal - either from portfolio or cash buffer..
+                    if (cashBuffer >= withdrawal)
+                    {
+                        // fund spending from cash first
+                        cashBuffer -= withdrawal;
+                        withdrawalSource = withdrawal;
                     }
                     else
                     {
-                        portfolioValue -= withdrawal;
+                        // use any remaining buffer, then draw from portfolio
+                        withdrawalSource = withdrawal - cashBuffer;
+                        portfolioValue -= withdrawalSource;
+                        cashBuffer = 0;
                     }
 
                     // Check if portfolio is depleted
@@ -221,7 +251,8 @@
                 YearsInDrawdown = yearsInDrawdown + currentDrawdownYears,
                 SharpeRatio = sharpeRatio,
                 AnnualizedReturn = Math.Pow(portfolioValue / initialValue, 1.0 / years) - 1,
-                YearsSurvived = years // survived the full duration
+                YearsSurvived = years, // survived the full duration
+                CutYears = cutYears
             };
         }
 
@@ -301,6 +332,7 @@
             var annualizedReturns = results.Select(r => r.AnnualizedReturn).ToList();
             var yearsSurvived = results.Select(r => r.YearsSurvived).ToList();
 
+
             // Calculate ruin probability
             int depleted = results.Count(r => r.YearsSurvived < targetYears);
             double ruinProbability = (double)depleted / results.Count;
@@ -326,6 +358,7 @@
             int preDownsizeFails = results.Count(r => r.YearsSurvived < 21);
             double preDownsizeRuin = (double)preDownsizeFails / results.Count;
             Console.WriteLine($"Probability of ruin before house downsize (Year 21): {preDownsizeRuin:P2}");
+            Console.WriteLine($"Avg. years with spending cut: {results.Average(r => r.CutYears):F1}");
 
             Console.WriteLine($"\nAnnualized Return:");
             Console.WriteLine($"  Median:        {GetPercentile(annualizedReturns, 0.5):P2}");
@@ -393,5 +426,6 @@
         public double SharpeRatio { get; set; }
         public double AnnualizedReturn { get; set; }
         public int YearsSurvived { get; set; }
+        public int CutYears { get; set; }
     }
 }
