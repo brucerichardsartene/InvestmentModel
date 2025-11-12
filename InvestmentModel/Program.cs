@@ -9,9 +9,9 @@
 
             var simulator = new PortfolioSimulator();
             simulator.RunSimulation(
-                numSimulations: 19000,
+                numSimulations: 40000,
                 years: 40,
-                initialInvestment: 3900000
+                initialInvestment: 2500000
             );
 
             Console.WriteLine("\nPress any key to exit...");
@@ -50,8 +50,17 @@
         private readonly double yourFees = 0.0015; // 0.15%
         private readonly double alFees = 0.013; // 1.3%
 
-        int annualWithdrawalStart = 5;
-        double annualWithdrawal = 180000; // starting draw
+        int annualWithdrawalStart = 9;
+
+        double housePrice = 2500000;
+        double mortgagePayment = 40000;
+        double mortgageRelease = 1300000;
+
+        int startYear = 2023;
+        int bjrBirthYear = 1971;
+        int mortgageYearStart = 2027;
+
+        double annualWithdrawal = 190000; // starting draw
         bool inflationLinked = true;
         double inflationRate = 0.028; // 2.8% inflation
 
@@ -140,19 +149,29 @@
                 // ================================================================
                 double currentWithdrawal = annualWithdrawal;
 
+                int bjrAge = (startYear + year) - bjrBirthYear;
+
                 // Age-based reduction in spending needs
-                if (year >= 21)
+                if (bjrAge >= 75)
                     currentWithdrawal *= 0.729; // 0.9^3
-                else if (year >= 16)
+                else if (bjrAge >= 70)
                     currentWithdrawal *= 0.81; // 0.9^2
-                else if (year >= 11)
+                else if (bjrAge >= 65)
                     currentWithdrawal *= 0.9; // 0.9^1
 
-                // Year 21: house downsize adds £1,700,000 to taxable account
-                if (year == 21)
+                // 100k injection in 2024
+                if ((startYear + year) == 2024)
                 {
-                    taxable += 1700000;
-                    portfolioValue += 1700000;
+                    taxable += 100000;
+                    portfolioValue += 100000;
+                    prevPeak = portfolioValue;
+                }
+
+                // Year 21: house downsize adds £1,700,000 to taxable account
+                if (bjrAge == 75)
+                {
+                    taxable += mortgageRelease;
+                    portfolioValue += mortgageRelease;
                     prevPeak = portfolioValue;
                 }
 
@@ -255,7 +274,7 @@
                     }
 
                     // Add mortgage payment (years 5-22)
-                    effectiveWithdrawal += (year >= 5 && year <= 22) ? 60000 : 0;
+                    effectiveWithdrawal += (startYear + year) >= 2026 && (startYear + year) <= 2046 ? mortgagePayment : 0;
 
                     // This is what we actually need to spend (net of taxes)
                     double netNeed = effectiveWithdrawal;
@@ -337,6 +356,10 @@
                         // Portfolio ran out - return early with year of depletion
                         return new SimulationResult
                         {
+                            StartValue = initialValue,
+                            StartYear = annualWithdrawalStart,
+                            StartDraw = annualWithdrawal,
+                            HousePrice = housePrice,
                             FinalValue = 0,
                             MaxDrawdown = 1.0, // 100% drawdown
                             YearsInDrawdown = year + 1,
@@ -388,6 +411,10 @@
 
             return new SimulationResult
             {
+                StartValue = initialValue,
+                StartYear = annualWithdrawalStart,
+                StartDraw = annualWithdrawal,
+                HousePrice = housePrice,
                 FinalValue = finalTotalWealth,
                 MaxDrawdown = maxDrawdown,
                 YearsInDrawdown = yearsInDrawdown + currentDrawdownYears,
@@ -480,6 +507,12 @@
             // Calculate ruin probability
             int depleted = results.Count(r => r.YearsSurvived < targetYears);
             double ruinProbability = (double)depleted / results.Count;
+
+            Console.WriteLine($"Assumptions:");
+            Console.WriteLine($"  Start value:    £{results.Select(r => r.StartValue).First()}");
+            Console.WriteLine($"  Start year:    £{results.Select(r => r.StartYear).First()}");
+            Console.WriteLine($"  Start draw:    £{results.Select(r => r.StartDraw).First()}");
+            Console.WriteLine($"  House price:    £{results.Select(r => r.HousePrice).First()}");
 
             Console.WriteLine($"Terminal Value:");
             Console.WriteLine($"  Median:    £{GetPercentile(finalValues, 0.5):N0}");
@@ -578,6 +611,10 @@
 
     public class SimulationResult
     {
+        public double StartValue { get; set; }
+        public double StartYear { get; set; }
+        public double StartDraw { get; set; }
+        public double HousePrice { get; set; }
         public double FinalValue { get; set; }
         public double MaxDrawdown { get; set; }
         public int YearsInDrawdown { get; set; }
